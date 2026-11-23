@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EcoPulse Desafio</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="fundo" aria-hidden="true"></div>
+
+    <main id="app">
+      <!-- Espera: o que chama quem passa no corredor -->
+      <section id="tela-espera" class="tela ativa">
+        <p class="marca">EcoPulse</p>
+        <h1>Desafio<br /><span>Salve o planeta</span></h1>
+        <p class="chamada">Ache o datacenter mais sujo usando o EcoPulse ao vivo na tela ao lado.</p>
+        <div class="botao-jogar" role="button" tabindex="0">Toque para jogar</div>
+        <p id="placar" class="placar"></p>
+      </section>
+
+      <section id="tela-instrucao" class="tela">
+        <p class="etiqueta">Como funciona</p>
+        <h2>As respostas estão no <span class="destaque">EcoPulse</span>, na tela ao lado.</h2>
+        <ul class="regras">
+          <li><strong>3</strong> perguntas</li>
+          <li><strong id="instrucao-vidas">3</strong> vidas</li>
+          <li>acerte tudo e salve o planeta</li>
+        </ul>
+        <p class="pular">toque para começar</p>
+      </section>
+
+      <section id="tela-carregando" class="tela">
+        <div class="pulso"></div>
+        <p>Lendo os dados do EcoPulse…</p>
+      </section>
+
+      <section id="tela-pergunta" class="tela">
+        <header class="hud">
+          <span id="numero" class="numero"></span>
+          <div id="relogio" class="relogio">
+            <div class="relogio-trilho"><div id="relogio-barra" class="relogio-barra"></div></div>
+            <span id="relogio-numero" class="relogio-numero"></span>
+          </div>
+          <div id="vidas" class="vidas" aria-label="vidas"></div>
+        </header>
+        <p id="etiqueta" class="etiqueta"></p>
+        <h2 id="titulo"></h2>
+        <p id="dica" class="dica"></p>
+        <div id="opcoes" class="opcoes"></div>
+      </section>
+
+      <section id="tela-vitoria" class="tela">
+        <p class="etiqueta">3 de 3</p>
+        <h2 class="gigante">Você salvou<br />o planeta!</h2>
+        <p class="chamada">Agora veja como o EcoPulse faz isso com os dados de verdade. Pergunte para a equipe!</p>
+      </section>
+
+      <section id="tela-derrota" class="tela">
+        <p class="etiqueta">Fim de jogo</p>
+        <h2>Quase!</h2>
+        <p class="chamada">A resposta era <strong id="derrota-resposta"></strong>.<br />A equipe mostra no EcoPulse onde ela estava.</p>
+        <p class="pular">toque para jogar de novo</p>
+      </section>
+
+      <section id="tela-erro" class="tela">
+        <p class="etiqueta">Ops, problema técnico</p>
+        <h2>Não consegui ler os dados</h2>
+        <p id="erro-texto" class="dica"></p>
+        <div class="acoes">
+          <button id="erro-tentar" type="button">Tentar de novo</button>
+          <button id="erro-demo" type="button">Usar modo demonstração</button>
+          <button id="erro-sair" type="button" class="discreto">Voltar ao início</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="flash" aria-hidden="true"></div>
+    <div id="faixa" aria-live="assertive"><span id="faixa-texto"></span></div>
+    <span id="modo" class="modo"></span>
+
+    <script src="config.js"></script>
+    <script src="vendor/canvas-confetti.js"></script>
+    <script src="dados-demo.js"></script>
+    <script src="api.js"></script>
+    <script src="perguntas.js"></script>
+    <script src="festa.js"></script>
+    <script src="game.js"></script>
+  </body>
+</html>
