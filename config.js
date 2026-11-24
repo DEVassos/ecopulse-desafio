@@ -1,13 +1,15 @@
-// Configuração do EcoPulse Desafio. É o único arquivo que precisa mudar no dia da feira.
+// Configuração do EcoPulse Desafio.
 //
 // MODO 'api'  → lê os mesmos dados que o EcoPulse mostra na tela 1 (backend ligado).
 // MODO 'demo' → usa os dados do modo demonstração do app (sem rede). Use junto com o app sem VITE_API_URL.
 //
-// Também dá para trocar sem editar, pela URL: index.html?modo=api&api=http://192.168.0.10:3000/api
+// Rode o jogo com `node servidor.js`: ele repassa /api para o backend (o online, por padrão), sem CORS.
+// Qual backend é escolhido na linha de comando do servidor.js, não aqui.
+// Também dá para trocar pela URL: index.html?modo=demo, ou ?api=http://outro-endereco/api (aí o CORS volta a valer).
 
 window.ECOPULSE_JOGO = {
   MODO: 'api',
-  API_URL: 'http://localhost:3000/api', // o mesmo valor de VITE_API_URL do frontend
+  API_URL: '/api', // o próprio servidor.js, que repassa para o backend
   EMAIL: 'userplanet@ecopulse.local', // usuário criado para a feira (o backend exige formato de e-mail)
   SENHA: 'planet123',
 

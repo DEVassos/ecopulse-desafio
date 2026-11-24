@@ -34,11 +34,22 @@ As perguntas são montadas com os dados do momento em que abrem. Uma pergunta s�
 
 ## Como rodar
 
-Na pasta do jogo (a raiz deste repositório):
+Na pasta do jogo (a raiz deste repositório), com Node 18 ou mais novo (não precisa instalar nada):
 
 ```bash
-npx serve -l 5174
+node servidor.js
 ```
+
+O `servidor.js` entrega as telas do jogo em `http://localhost:5174` e repassa os pedidos de `/api` para o backend do EcoPulse. Por padrão, é o **backend online** (`https://ecopulse-backend-lxtx.onrender.com`), o mesmo do site `https://ecopulse-app-smoky.vercel.app`. Como o navegador só fala com o `servidor.js`, **o CORS do backend não importa**: não é preciso mexer no `CORS_ORIGIN`.
+
+Para usar outro backend, passe o endereço:
+
+```bash
+node servidor.js http://localhost:3000        # backend local, no mesmo PC
+node servidor.js http://192.168.0.10:3001     # backend local em outro notebook (veja "Plano C")
+```
+
+Deixe a janela do `servidor.js` aberta. Ele também chama o backend a cada 5 min, para o Render gratuito não dormir.
 
 Depois abra `http://localhost:5174` no navegador em tela cheia (F11) ou em modo quiosque:
 
@@ -60,21 +71,38 @@ No modo `api`, o jogo entra no backend com um usuário próprio, só de leitura 
 
 Esses valores ficam em `EMAIL` e `SENHA` no `config.js`. O backend do EcoPulse exige que o usuário seja um e-mail, por isso é `userplanet@ecopulse.local`, e não só `userplanet`.
 
-**Se o backend for outro, ou o banco tiver sido zerado**, crie o usuário de novo pelo fluxo de convite do EcoPulse:
+**O usuário precisa existir no banco do backend usado.** O banco online e o local são diferentes. Para criar, use o fluxo de convite do EcoPulse:
 
-1. Entre no EcoPulse como administrador e gere um convite para `userplanet@ecopulse.local`, com papel `usuario`.
-2. Abra o link do convite, informe um nome (ex.: "Jogo da feira") e a senha `planet123`.
+1. Entre no EcoPulse como administrador (no online: `https://ecopulse-app-smoky.vercel.app`) e gere um convite para `userplanet@ecopulse.local`, com papel `usuario`.
+2. O EcoPulse mostra o link do convite na tela (não manda e-mail, então o endereço não precisa existir). Abra o link, informe o nome "Jogo da feira" e a senha `planet123`.
 
 Para usar outro usuário sem editar arquivo, passe pela URL: `?email=...&senha=...`.
 
-## Na feira: dois notebooks (modo `api`)
+## Na feira (backend online)
 
-O jogo roda no **notebook do jogo** e lê os dados pela rede no **notebook da aplicação**, onde ficam o backend e o EcoPulse (tela 1). O `config.js` já vem com `MODO: 'api'`.
+Precisa de **internet** nos dois notebooks. Eles não precisam estar na mesma rede.
+
+| Notebook | O que fazer |
+| --- | --- |
+| **Aplicação (tela 1)** | Abrir `https://ecopulse-app-smoky.vercel.app` e entrar com uma conta. |
+| **Jogo (tela 2)** | `git pull` (ou `git clone`), `node servidor.js` e abrir `http://localhost:5174` em tela cheia. No canto deve aparecer **"dados ao vivo"**. |
+
+Opcional, no Render: `POLLING_INTERVAL_MS=300000` (coleta a cada 5 min), para os números mudarem pouco no meio de uma pergunta.
+
+## Plano B (sem rede)
+
+Rode o app do EcoPulse sem `VITE_API_URL` (modo demonstração) e o jogo com `MODO: 'demo'` no `config.js` (ou abra `http://localhost:5174/?modo=demo`). Os dois usam os mesmos dados ilustrativos, que ficam em `dados-demo.js`. Se a equipe mudar os dados de demonstração do app, mude aqui também.
+
+Se o jogo não conseguir ler a API no meio da feira, a tela de erro tem o botão "Usar modo demonstração".
+
+## Plano C: backend local (Docker), se o Render falhar
+
+O jogo roda no **notebook do jogo** e lê os dados pela rede no **notebook da aplicação**, onde ficam o backend local e o EcoPulse local. Os dados ainda vêm da API de métricas na internet, então isso só ajuda se o problema for o Render.
 
 ```
 notebook da aplicação                         notebook do jogo
-  Docker (WSL): backend :3000, EcoPulse :5173    npx serve :5174
-  portproxy :3001 → localhost:3000   ◄─rede─    http://localhost:5174/?api=http://IP-DA-APLICACAO:3001/api
+  Docker (WSL): backend :3000, EcoPulse :5173    node servidor.js http://IP-DA-APLICACAO:3001
+  portproxy :3001 → localhost:3000   ◄─rede─    http://localhost:5174
 ```
 
 ### Rede
@@ -83,12 +111,10 @@ Os dois notebooks precisam estar na mesma rede. **Wi-Fi de evento costuma bloque
 
 ### Notebook da aplicação
 
-1. **`.env` do backend** (na raiz do `greener-app`). Durante a feira, colete a cada 5 min, para os números mudarem pouco no meio de uma pergunta:
+1. **`.env` do backend** (na raiz do `greener-app`). Durante a feira, colete a cada 5 min:
    ```
    POLLING_INTERVAL_MS=300000
-   CORS_ORIGIN=http://localhost:5173,http://localhost:5174
    ```
-   O `CORS_ORIGIN` já basta assim, porque o jogo é aberto como `http://localhost:5174` no notebook dele. Mantenha a origem do app em primeiro lugar.
 2. **Abra uma janela do Ubuntu e deixe aberta o tempo todo** (veja abaixo) e suba os containers:
    ```bash
    cd /mnt/c/dev/greener-app && docker compose up -d
@@ -99,37 +125,22 @@ Os dois notebooks precisam estar na mesma rede. **Wi-Fi de evento costuma bloque
    netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=3001 connectaddress=127.0.0.1 connectport=3000
    New-NetFirewallRule -DisplayName "EcoPulse API (jogo)" -Direction Inbound -Protocol TCP -LocalPort 3001 -Action Allow
    ```
-   A porta 3001 repassa para a 3000 do backend. Ela fica gravada no Windows e continua valendo depois de reiniciar. Para desfazer depois da feira: `netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=3001` e `Remove-NetFirewallRule -DisplayName "EcoPulse API (jogo)"`.
+   A porta 3001 repassa para a 3000 do backend e continua valendo depois de reiniciar. Para desfazer depois da feira: `netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=3001` e `Remove-NetFirewallRule -DisplayName "EcoPulse API (jogo)"`.
 4. **Descubra o IP:** `ipconfig`, linha "Endereço IPv4" do adaptador Wi-Fi (ex.: `192.168.0.10`).
-5. Abra o EcoPulse em `http://localhost:5173` e entre com sua conta.
+5. Abra o EcoPulse local em `http://localhost:5173` e entre com sua conta.
 
 ### Notebook do jogo
 
-1. Baixe o jogo (`git clone` deste repositório, ou `git pull` se já tiver) e, na pasta dele:
-   ```bash
-   npx serve -l 5174
-   ```
-2. Teste a rede: no navegador, `http://IP-DA-APLICACAO:3001/health` precisa responder `{"status":"ok","db":"ok"}`. Se não responder, o problema é rede, portproxy ou firewall, não o jogo.
-3. Abra o jogo com o IP da aplicação:
-   ```
-   http://localhost:5174/?api=http://IP-DA-APLICACAO:3001/api
-   ```
-   Em tela cheia (F11) ou em modo quiosque: `msedge --kiosk "http://localhost:5174/?api=http://IP-DA-APLICACAO:3001/api"`. Se preferir, coloque o endereço direto em `API_URL` no `config.js`.
-4. No canto da tela de espera deve aparecer **"dados ao vivo"**. Jogue uma partida de teste.
+1. Teste a rede: no navegador, `http://IP-DA-APLICACAO:3001/health` precisa responder `{"status":"ok","db":"ok"}`. Se não responder, o problema é rede, portproxy ou firewall, não o jogo.
+2. Na pasta do jogo: `node servidor.js http://IP-DA-APLICACAO:3001` e abra `http://localhost:5174`.
 
 ### Backend no Docker dentro do WSL: deixe uma janela do Ubuntu aberta
 
-Se o Docker do backend roda dentro do WSL (Ubuntu), o WSL desliga sozinho quando fica sem uso, e o backend cai junto. Nos testes, isso aconteceu em poucos segundos sem nenhuma sessão aberta. **Durante a feira, deixe uma janela do Ubuntu aberta o tempo todo.** Se o backend cair mesmo assim, o jogo mostra a tela de erro, com os botões "Tentar de novo" e "Usar modo demonstração".
+Se o Docker do backend roda dentro do WSL (Ubuntu), o WSL desliga sozinho quando fica sem uso, e o backend cai junto. Nos testes, isso aconteceu em poucos segundos sem nenhuma sessão aberta. **Deixe uma janela do Ubuntu aberta o tempo todo.**
 
 ### Tudo num PC só
 
-Com o backend no mesmo PC do jogo, basta abrir `http://localhost:5174`: o padrão `API_URL` (`http://localhost:3000/api`) já serve, sem portproxy.
-
-## Plano B (sem rede)
-
-Rode o app do EcoPulse sem `VITE_API_URL` (modo demonstração) e o jogo com `MODO: 'demo'` no `config.js` (ou abra `http://localhost:5174/?modo=demo`). Os dois usam os mesmos dados ilustrativos, que ficam em `dados-demo.js`. Se a equipe mudar os dados de demonstração do app, mude aqui também.
-
-Se o jogo não conseguir ler a API no meio da feira, a tela de erro tem o botão "Usar modo demonstração".
+Com o backend local no mesmo PC do jogo: `node servidor.js http://localhost:3000`, sem portproxy.
 
 ## Atalhos (para a equipe)
 
@@ -142,7 +153,7 @@ Se o jogo não conseguir ler a API no meio da feira, a tela de erro tem o botão
 | Campo | Padrão | O que faz |
 | --- | --- | --- |
 | `MODO` | `'api'` | `'api'` (dados ao vivo) ou `'demo'` (dados ilustrativos) |
-| `API_URL` | `http://localhost:3000/api` | Endereço da API. Com o backend em outro notebook, `http://IP:3001/api` (ou `?api=` na URL) |
+| `API_URL` | `/api` | O próprio `servidor.js`, que repassa para o backend. O backend é escolhido na linha de comando do `servidor.js` |
 | `EMAIL` / `SENHA` | `userplanet@ecopulse.local` / `planet123` | Usuário do jogo no backend |
 | `VIDAS` | `3` | Vidas para a partida inteira |
 | `TEMPO_POR_PERGUNTA` | `40` | Segundos por pergunta |
@@ -156,6 +167,7 @@ Se o jogo não conseguir ler a API no meio da feira, a tela de erro tem o botão
 
 | Arquivo | O que faz |
 | --- | --- |
+| `servidor.js` | Servidor do jogo: entrega os arquivos e repassa `/api` para o backend (online por padrão), sem CORS |
 | `index.html` | As telas: espera, instrução, carregando, pergunta, vitória, derrota e erro |
 | `config.js` | Modo, endereço da API, usuário, vidas, tempos e margens |
 | `api.js` | Login e leitura de `/api/services`, `/api/regions` e `/api/services/ranking` (os números das 24 h que a lista do EcoPulse mostra) |

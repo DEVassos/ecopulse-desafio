@@ -15,7 +15,7 @@
       });
     } catch (erro) {
       throw new Error(
-        `Não consegui falar com o backend em ${C.API_URL}. Confira se ele está ligado, se os dois PCs estão na mesma rede e se a origem do jogo está no CORS_ORIGIN.`,
+        `Não consegui falar com o backend em ${C.API_URL}. Confira se o jogo foi aberto pelo node servidor.js (e se a janela dele continua aberta), se há internet e se o backend está no ar.`,
       );
     } finally {
       clearTimeout(limite);
