@@ -44,6 +44,47 @@ html, body {
   to { transform: translateY(-130vh) scale(1.1); opacity: 0; }
 }
 
+/* ---------- derrota: o ar fica poluído e as folhas secam e caem ---------- */
+/* Tom de "o planeta ficou triste", sem vermelho piscando: o visitante tem que querer jogar de novo */
+#poluicao {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 0%, #3a3631, #1c1a17 55%, #0e0d0c 100%);
+  opacity: 0;
+  transition: opacity 1.8s ease;
+}
+#fundo { transition: filter 1.8s ease; }
+body.derrotado #poluicao { opacity: 1; }
+/* as bolhas viram fumaça cinza */
+body.derrotado #fundo { filter: grayscale(1) sepia(0.25) brightness(0.85); }
+
+#folhas { position: fixed; inset: 0; overflow: hidden; pointer-events: none; }
+#folhas span {
+  position: absolute;
+  top: -12vh;
+  animation: cair linear forwards;
+}
+/* a folha balança de um lado para o outro enquanto cai */
+#folhas span i {
+  display: block;
+  font-style: normal;
+  animation: balanco ease-in-out infinite alternate;
+}
+@keyframes cair {
+  0% { transform: translateY(0); opacity: 0; }
+  8% { opacity: 0.9; }
+  85% { opacity: 0.9; }
+  100% { transform: translateY(125vh); opacity: 0; }
+}
+@keyframes balanco {
+  from { transform: translateX(-40px) rotate(-35deg); }
+  to { transform: translateX(40px) rotate(35deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #folhas { display: none; }
+}
+
 /* ---------- telas ---------- */
 #app { position: relative; height: 100%; }
 .tela {
@@ -132,9 +173,13 @@ h1 span { display: block; font-size: 0.42em; color: var(--neon); margin-top: 0.1
 .relogio.urgente .relogio-numero { color: var(--erro); animation: bater 0.5s ease-in-out infinite; }
 @keyframes bater { 50% { transform: scale(1.25); } }
 .vidas { display: flex; gap: 6px; font-size: clamp(26px, 3vw, 42px); line-height: 1; }
-.vida { color: #f43f5e; text-shadow: 0 0 14px rgba(244, 63, 94, 0.6); }
-.vida.perdida { color: rgba(255, 255, 255, 0.15); text-shadow: none; animation: perder 0.6s ease-out; }
-@keyframes perder { 0% { transform: scale(1.8); color: #f43f5e; } 100% { transform: scale(1); } }
+/* vidas são folhas (emoji): a cor vem do próprio emoji, então a perdida fica cinza e apagada por filtro */
+.vida { display: inline-block; filter: drop-shadow(0 0 10px rgba(92, 255, 184, 0.6)); }
+.vida.perdida { filter: grayscale(1); opacity: 0.2; animation: perder 0.6s ease-out; }
+@keyframes perder {
+  0% { transform: scale(1.8) rotate(-20deg); filter: none; opacity: 1; }
+  100% { transform: scale(1) rotate(0); }
+}
 
 .opcoes { width: 100%; margin-top: clamp(8px, 2.5vh, 30px); display: flex; flex-wrap: wrap; justify-content: center; gap: clamp(12px, 2vw, 28px); }
 .opcao {

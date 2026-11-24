@@ -1,9 +1,18 @@
-// Monta cada pergunta a partir dos dados do momento em que ela abre ("foto do momento").
-// Uma pergunta = { tipo: 'bolhas' | 'opcoes', etiqueta, titulo, dica, opcoes: [{ id, rotulo, sub }], certa, alvo? }
+// Banco de perguntas. Cada partida sorteia 3 perguntas diferentes, e cada uma é montada com os dados
+// do momento em que ela abre ("foto do momento"). Todas as respostas estão visíveis no EcoPulse (tela 1).
+//
+// Uma pergunta = { tipo: 'bolhas' | 'opcoes', etiqueta, titulo, dica, opcoes: [{ id, rotulo, sub }], certa }
+//
+// Regras do sorteio, para cada partida ficar variada:
+//   - a mesma pergunta não se repete na partida;
+//   - no máximo duas perguntas da mesma família (serviços, alertas, regiões, mapa);
+//   - a resposta certa não se repete na partida.
+// Se os dados não permitirem, as regras de família e de resposta são relaxadas, nessa ordem.
 
 (function () {
   const C = window.ECOPULSE_JOGO;
 
+  // ---------- utilidades ----------
   const embaralhar = (lista) => {
     const a = [...lista];
     for (let i = a.length - 1; i > 0; i--) {
@@ -16,158 +25,287 @@
   const lugar = (s) => [s.city, s.country].filter(Boolean).join(', ') || s.region || '';
   const exigeMargem = () => C.MODO === 'api'; // no modo demo os números não mudam
 
-  /** Maior valor bem à frente do segundo (ou não é preciso conferir). */
-  const maiorComMargem = (primeiro, segundo) =>
-    !exigeMargem() || segundo === undefined || (primeiro > 0 && (primeiro - segundo) / primeiro >= C.MARGEM_MINIMA);
-  /** Menor valor bem abaixo do segundo. */
-  const menorComMargem = (primeiro, segundo) =>
-    !exigeMargem() || segundo === undefined || (segundo > 0 && (segundo - primeiro) / segundo >= C.MARGEM_MINIMA);
+  /**
+   * O 1º colocado está bem separado do 2º? Empate nunca vale. No modo api, exige a margem (MARGEM_MINIMA
+   * ou, nos totais de 24 h, MARGEM_24H), para os números não trocarem de posição enquanto o visitante procura.
+   */
+  function folga(primeiro, segundo, maior, margem = C.MARGEM_MINIMA) {
+    if (segundo === undefined) return true;
+    if (primeiro === segundo) return false;
+    if (!exigeMargem()) return true;
+    const base = maior ? primeiro : segundo;
+    return base > 0 && Math.abs(primeiro - segundo) / base >= margem;
+  }
+  const CAMPOS_24H = ['co2e24h', 'energia24h', 'potenciaW'];
 
-  function maiorPor(servicos, campo, textos, ignorarMargem = false) {
-    const comValor = servicos.filter((s) => s.status === 'ativo' && typeof s[campo] === 'number');
-    if (comValor.length < 2) return null;
-    const ordem = [...comValor].sort((a, b) => b[campo] - a[campo]);
-    if (!ignorarMargem && !maiorComMargem(ordem[0][campo], ordem[1][campo])) return null;
-    return {
-      tipo: 'bolhas',
-      ...textos,
-      opcoes: embaralhar(ordem.slice(0, 6)).map((s) => ({ id: s.id, rotulo: s.name, sub: lugar(s) })),
-      certa: ordem[0].id,
-      alvo: ordem[0],
+  /**
+   * Serviços com valor no campo, de qualquer status: a lista do EcoPulse mostra todos, então o 1º colocado
+   * do jogo é o mesmo da tela. co2e24h, energia24h e potenciaW são das últimas 24 h (ver api.js).
+   */
+  const comValor = (d, campo) => d.services.filter((s) => typeof s[campo] === 'number');
+  const opcaoServico = (s) => ({ id: s.id, rotulo: s.name, sub: lugar(s) });
+  const opcaoRegiao = (r) => ({ id: r.code, rotulo: r.city || r.region, sub: r.country });
+
+  // ---------- fábricas ----------
+  /** "Qual serviço tem mais/menos <campo>?" com bolhas do mesmo tamanho. */
+  function rankingServicos(campo, maior, textos) {
+    return (d) => {
+      const lista = comValor(d, campo);
+      if (lista.length < 2) return null;
+      const ordem = [...lista].sort((a, b) => (maior ? b[campo] - a[campo] : a[campo] - b[campo]));
+      const margem = CAMPOS_24H.includes(campo) ? C.MARGEM_24H : C.MARGEM_MINIMA;
+      if (!folga(ordem[0][campo], ordem[1][campo], maior, margem)) return null;
+      return {
+        tipo: 'bolhas',
+        ...textos,
+        opcoes: embaralhar(ordem.slice(0, 6)).map(opcaoServico),
+        certa: ordem[0].id,
+      };
     };
   }
 
-  // Pergunta 1 — apague o datacenter mais sujo
-  const TEXTO_CO2 = {
-    etiqueta: 'Apague o datacenter mais sujo',
-    titulo: 'Qual serviço está emitindo mais CO₂e agora?',
-    dica: 'Olhe o ranking ou o tamanho das bolhas no EcoPulse e toque na bolha certa.',
-  };
-  function pergunta1(d) {
-    return (
-      maiorPor(d.services, 'emissionsG', TEXTO_CO2) ||
-      maiorPor(d.services, 'energyKwh', {
-        etiqueta: 'Caça ao gastão de energia',
-        titulo: 'Qual serviço está gastando mais energia agora?',
-        dica: 'Confira a energia (kWh) de cada serviço no EcoPulse.',
-      }) ||
-      maiorPor(d.services, 'cpuPercent', {
-        etiqueta: 'Quem está suando a camisa?',
-        titulo: 'Qual serviço está usando mais CPU agora?',
-        dica: 'Confira o uso de CPU de cada serviço no EcoPulse.',
-      }) ||
-      maiorPor(d.services, 'emissionsG', TEXTO_CO2, true)
-    );
+  /** Sorteia até 4 regiões em que o 1º colocado em <campo> fica bem separado do 2º. */
+  function rankingRegioes(d, campo, maior, excluir) {
+    const regioes = d.regions.filter((r) => typeof r[campo] === 'number' && r.code !== excluir);
+    if (regioes.length < 2) return null;
+    for (let tentativa = 0; tentativa < 40; tentativa++) {
+      const escolhidas = embaralhar(regioes).slice(0, Math.min(4, regioes.length));
+      const ordem = [...escolhidas].sort((a, b) => (maior ? b[campo] - a[campo] : a[campo] - b[campo]));
+      if (folga(ordem[0][campo], ordem[1][campo], maior)) return { escolhidas, certa: ordem[0] };
+    }
+    return null;
   }
 
-  // Pergunta 2 — quem está com problema
-  function pergunta2(d) {
-    const ativos = d.services.filter((s) => s.status === 'ativo');
-    const problema = (status, titulo, dica) => {
+  /** "Qual destes serviços está <status>?": um com o problema e até 3 ativos. */
+  function servicoComProblema(status, titulo, dica) {
+    return (d) => {
       const comProblema = d.services.filter((s) => s.status === status);
+      const ativos = d.services.filter((s) => s.status === 'ativo');
       if (comProblema.length === 0 || ativos.length < 1) return null;
       const certo = sortear(comProblema);
-      const opcoes = embaralhar([certo, ...embaralhar(ativos).slice(0, 3)]);
       return {
         tipo: 'opcoes',
         etiqueta: 'Alerta no painel',
         titulo,
         dica,
-        opcoes: opcoes.map((s) => ({ id: s.id, rotulo: s.name, sub: lugar(s) })),
+        opcoes: embaralhar([certo, ...embaralhar(ativos).slice(0, 3)]).map(opcaoServico),
         certa: certo.id,
       };
     };
-    return (
-      problema('indisponivel', 'Qual destes serviços está fora do ar?', 'No EcoPulse, a cor da bolha e o status na lista mostram quem caiu.') ||
-      problema('sem_metricas', 'Qual destes serviços está sem medição?', 'No EcoPulse, procure o serviço sem métricas (sem leitura de CPU e energia).') ||
-      cidadeComMaisServicos(d) ||
-      quantosAtivos(d)
-    );
   }
 
-  function cidadeComMaisServicos(d) {
-    const contagem = new Map();
-    for (const s of d.services) if (s.city) contagem.set(s.city, (contagem.get(s.city) || 0) + 1);
-    const ordem = [...contagem].sort((a, b) => b[1] - a[1]);
-    if (ordem.length < 2 || ordem[0][1] === ordem[1][1]) return null; // precisa de uma vencedora única
-    const opcoes = embaralhar([ordem[0], ...embaralhar(ordem.slice(1)).slice(0, 3)]);
-    return {
-      tipo: 'opcoes',
-      etiqueta: 'Olho no mapa',
-      titulo: 'Qual cidade tem mais serviços monitorados?',
-      dica: 'Conte as bolhas de cada cidade no mapa do EcoPulse.',
-      opcoes: opcoes.map(([cidade]) => ({ id: cidade, rotulo: cidade, sub: '' })),
-      certa: ordem[0][0],
-    };
-  }
+  // ---------- o banco ----------
+  const BANCO = [
+    // Família "servicos": rankings da lista de serviços
+    {
+      id: 'mais-co2',
+      familia: 'servicos',
+      montar: rankingServicos('co2e24h', true, {
+        etiqueta: 'Apague o datacenter mais sujo',
+        titulo: 'Qual serviço emitiu mais CO₂e nas últimas 24 h?',
+        dica: 'Olhe a coluna CO₂e 24 h na lista do EcoPulse e toque na bolha certa.',
+      }),
+    },
+    {
+      id: 'menos-co2',
+      familia: 'servicos',
+      montar: rankingServicos('co2e24h', false, {
+        etiqueta: 'Ache o exemplo a seguir',
+        titulo: 'Qual serviço emitiu menos CO₂e nas últimas 24 h?',
+        dica: 'Olhe a coluna CO₂e 24 h no EcoPulse: quem está lá no fim da lista?',
+      }),
+    },
+    {
+      id: 'mais-energia',
+      familia: 'servicos',
+      montar: rankingServicos('energia24h', true, {
+        etiqueta: 'Caça ao gastão de energia',
+        titulo: 'Qual serviço gastou mais energia nas últimas 24 h?',
+        dica: 'Mais energia = mais conta de luz e mais CO₂e. Veja a coluna Energia 24 h no EcoPulse.',
+      }),
+    },
+    {
+      id: 'mais-potencia',
+      familia: 'servicos',
+      montar: rankingServicos('potenciaW', true, {
+        etiqueta: 'Quem puxa mais da tomada?',
+        titulo: 'Qual serviço tem a maior potência média?',
+        dica: 'Veja a coluna Potência média (W) na lista de serviços do EcoPulse.',
+      }),
+    },
+    {
+      id: 'mais-cpu',
+      familia: 'servicos',
+      montar: rankingServicos('cpuPercent', true, {
+        etiqueta: 'Quem está suando a camisa?',
+        titulo: 'Qual serviço está usando mais CPU agora?',
+        dica: 'Confira a coluna de CPU na lista de serviços do EcoPulse.',
+      }),
+    },
+    {
+      id: 'menos-cpu',
+      familia: 'servicos',
+      montar: rankingServicos('cpuPercent', false, {
+        etiqueta: 'Quem está de boa?',
+        titulo: 'Qual serviço está usando menos CPU agora?',
+        dica: 'Confira a coluna de CPU na lista de serviços do EcoPulse.',
+      }),
+    },
 
-  function quantosAtivos(d) {
-    const n = d.services.filter((s) => s.status === 'ativo').length;
-    const valores = embaralhar([...new Set([n, n + 1, n + 2, Math.max(0, n - 1)])]);
-    return {
-      tipo: 'opcoes',
-      etiqueta: 'Olho no mapa',
-      titulo: 'Quantos serviços estão ativos agora?',
-      dica: 'Conte os serviços ativos no EcoPulse.',
-      opcoes: valores.map((v) => ({ id: String(v), rotulo: String(v), sub: v === 1 ? 'serviço' : 'serviços' })),
-      certa: String(n),
-    };
-  }
+    // Família "alertas": status dos serviços
+    {
+      id: 'fora-do-ar',
+      familia: 'alertas',
+      montar: servicoComProblema(
+        'indisponivel',
+        'Qual destes serviços está fora do ar?',
+        'No EcoPulse, a cor da bolha e o status na lista mostram quem caiu.',
+      ),
+    },
+    {
+      id: 'sem-medicao',
+      familia: 'alertas',
+      montar: servicoComProblema(
+        'sem_metricas',
+        'Qual destes serviços está sem medição?',
+        'No EcoPulse, procure o serviço sem métricas (sem leitura de CPU e energia).',
+      ),
+    },
 
-  // Pergunta 3 — para onde mover o servidor
-  function pergunta3(d, contexto) {
-    const servico = contexto.alvo || null;
-    const regioes = d.regions.filter((r) => typeof r.carbonIntensityGco2ePerKwh === 'number');
-    const candidatas = regioes.filter((r) => !servico || r.code !== servico.regionCode);
-    if (candidatas.length >= 2) {
-      for (let tentativa = 0; tentativa < 40; tentativa++) {
-        const escolhidas = embaralhar(candidatas).slice(0, Math.min(4, candidatas.length));
-        const ordem = [...escolhidas].sort((a, b) => a.carbonIntensityGco2ePerKwh - b.carbonIntensityGco2ePerKwh);
-        if (!menorComMargem(ordem[0].carbonIntensityGco2ePerKwh, ordem[1].carbonIntensityGco2ePerKwh)) continue;
+    // Família "regioes": lista de regiões (intensidade de carbono e % renovável)
+    {
+      id: 'mover-servidor',
+      familia: 'regioes',
+      montar(d) {
+        // O serviço a mover é o que mais emitiu nas 24 h; a região dele não entra nas opções
+        const emissores = comValor(d, 'co2e24h').sort((a, b) => b.co2e24h - a.co2e24h);
+        const servico = emissores[0] || null;
+        const r = rankingRegioes(d, 'carbonIntensityGco2ePerKwh', false, servico && servico.regionCode);
+        if (!r) return null;
         return {
           tipo: 'opcoes',
           etiqueta: 'Mude o servidor de lugar',
           titulo: servico ? `Para onde mover o ${servico.name}?` : 'Para onde mover o servidor?',
-          dica: 'Escolha a região com a energia mais limpa: a menor intensidade de carbono (gCO₂e/kWh) no EcoPulse.',
-          opcoes: escolhidas.map((r) => ({ id: r.code, rotulo: r.city || r.region, sub: r.country })),
-          certa: ordem[0].code,
+          dica: 'Escolha a energia mais limpa: o menor fator de carbono (gCO₂e/kWh) na lista de regiões do EcoPulse.',
+          opcoes: r.escolhidas.map(opcaoRegiao),
+          certa: r.certa.code,
         };
-      }
+      },
+    },
+    {
+      id: 'mais-renovavel',
+      familia: 'regioes',
+      montar(d) {
+        const r = rankingRegioes(d, 'renewableSharePercent', true);
+        if (!r) return null;
+        return {
+          tipo: 'opcoes',
+          etiqueta: 'Energia do sol, do vento e da água',
+          titulo: 'Qual destas regiões usa mais energia renovável?',
+          dica: 'Na lista de regiões do EcoPulse, compare o "% renovável".',
+          opcoes: r.escolhidas.map(opcaoRegiao),
+          certa: r.certa.code,
+        };
+      },
+    },
+    {
+      id: 'regiao-mais-suja',
+      familia: 'regioes',
+      montar(d) {
+        const r = rankingRegioes(d, 'carbonIntensityGco2ePerKwh', true);
+        if (!r) return null;
+        return {
+          tipo: 'opcoes',
+          etiqueta: 'Fuja da energia suja',
+          titulo: 'Qual destas regiões tem o maior fator de carbono?',
+          dica: 'Procure o maior fator (gCO₂e/kWh) na lista de regiões do EcoPulse: é onde a energia é mais suja.',
+          opcoes: r.escolhidas.map(opcaoRegiao),
+          certa: r.certa.code,
+        };
+      },
+    },
+
+    // Família "mapa": contagens no mapa e na lista
+    {
+      id: 'cidade-mais-servicos',
+      familia: 'mapa',
+      montar(d) {
+        const contagem = new Map();
+        for (const s of d.services) if (s.city) contagem.set(s.city, (contagem.get(s.city) || 0) + 1);
+        const ordem = [...contagem].sort((a, b) => b[1] - a[1]);
+        if (ordem.length < 2 || ordem[0][1] === ordem[1][1]) return null; // precisa de uma vencedora única
+        const opcoes = embaralhar([ordem[0], ...embaralhar(ordem.slice(1)).slice(0, 3)]);
+        return {
+          tipo: 'opcoes',
+          etiqueta: 'Olho no mapa',
+          titulo: 'Qual cidade tem mais serviços monitorados?',
+          dica: 'Conte as bolhas de cada cidade no mapa do EcoPulse.',
+          opcoes: opcoes.map(([cidade]) => ({ id: cidade, rotulo: cidade, sub: '' })),
+          certa: ordem[0][0],
+        };
+      },
+    },
+    {
+      id: 'quantos-ativos',
+      familia: 'mapa',
+      montar(d) {
+        const n = d.services.filter((s) => s.status === 'ativo').length;
+        if (n < 1) return null;
+        const valores = embaralhar([...new Set([n, n + 1, n + 2, Math.max(0, n - 1)])]);
+        return {
+          tipo: 'opcoes',
+          etiqueta: 'Contagem rápida',
+          titulo: 'Quantos serviços estão ativos agora?',
+          dica: 'Conte os serviços com status ativo no EcoPulse.',
+          opcoes: valores.map((v) => ({ id: String(v), rotulo: String(v), sub: v === 1 ? 'serviço' : 'serviços' })),
+          certa: String(n),
+        };
+      },
+    },
+  ];
+
+  // ---------- sorteio ----------
+  function rotuloCerto(p) {
+    const certa = p.opcoes.find((o) => o.id === p.certa);
+    return certa ? certa.rotulo : p.certa;
+  }
+
+  /** Primeira pergunta da ordem sorteada que dá para montar com os dados e respeita as regras pedidas. */
+  function escolher(dados, contexto, regras) {
+    for (const item of contexto.ordem) {
+      if (contexto.usadas.includes(item.id)) continue;
+      if (regras.familia && contexto.familias.filter((f) => f === item.familia).length >= 2) continue;
+      const p = item.montar(dados);
+      if (!p || p.opcoes.length < 2) continue;
+      if (regras.resposta && contexto.respostas.includes(rotuloCerto(p))) continue;
+      return { item, p };
     }
-    // Sem regiões com intensidade: troca por "quem é o mais limpo", que tem resposta diferente da pergunta 1
-    return (
-      menorEmissao(d.services, false) ||
-      maiorPor(d.services, 'cpuPercent', {
-        etiqueta: 'Última chance de salvar o planeta',
-        titulo: 'Qual serviço está usando mais CPU agora?',
-        dica: 'Confira o uso de CPU de cada serviço no EcoPulse.',
-      }) ||
-      menorEmissao(d.services, true)
-    );
+    return null;
   }
 
-  function menorEmissao(servicos, ignorarMargem) {
-    const comValor = servicos.filter((s) => s.status === 'ativo' && typeof s.emissionsG === 'number');
-    if (comValor.length < 2) return null;
-    const ordem = [...comValor].sort((a, b) => a.emissionsG - b.emissionsG);
-    if (!ignorarMargem && !menorComMargem(ordem[0].emissionsG, ordem[1].emissionsG)) return null;
-    return {
-      tipo: 'bolhas',
-      etiqueta: 'Ache o exemplo a seguir',
-      titulo: 'Qual serviço está emitindo menos CO₂e agora?',
-      dica: 'Olhe o ranking no EcoPulse: quem está lá no fim da lista?',
-      opcoes: embaralhar(ordem.slice(0, 6)).map((s) => ({ id: s.id, rotulo: s.name, sub: lugar(s) })),
-      certa: ordem[0].id,
-    };
-  }
-
+  /**
+   * Monta a pergunta `numero` (1 a 3) da partida. `contexto` começa vazio a cada partida e guarda
+   * a ordem sorteada e o que já saiu. Se a montagem falhar, nada é gravado, e dá para tentar de novo.
+   */
   function gerar(numero, dados, contexto) {
-    const pergunta = numero === 1 ? pergunta1(dados) : numero === 2 ? pergunta2(dados) : pergunta3(dados, contexto);
-    if (!pergunta || pergunta.opcoes.length < 2) {
+    if (!contexto.ordem) {
+      contexto.ordem = embaralhar(BANCO);
+      contexto.usadas = [];
+      contexto.familias = [];
+      contexto.respostas = [];
+    }
+    const achou =
+      escolher(dados, contexto, { familia: true, resposta: true }) ||
+      escolher(dados, contexto, { familia: false, resposta: true }) ||
+      escolher(dados, contexto, { familia: false, resposta: false });
+    if (!achou) {
       throw new Error('O EcoPulse está sem dados suficientes para montar a pergunta. Confira se o worker está coletando.');
     }
-    return pergunta;
+    contexto.usadas.push(achou.item.id);
+    contexto.familias.push(achou.item.familia);
+    contexto.respostas.push(rotuloCerto(achou.p));
+    return achou.p;
   }
 
-  window.EcoPerguntas = { gerar };
+  window.EcoPerguntas = { gerar, BANCO };
 })();

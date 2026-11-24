@@ -57,6 +57,7 @@
     clearTimeout(estado.voltar);
     clearTimeout(estado.instrucao);
     pararRelogio();
+    ambienteDerrota(false);
     mostrarPlacar();
     mostrar('espera');
   }
@@ -88,7 +89,6 @@
       mostrar('erro');
       return;
     }
-    if (estado.numero === 1) estado.contexto.alvo = estado.pergunta.alvo;
     desenharPergunta();
     mostrar('pergunta');
     iniciarRelogio();
@@ -101,7 +101,7 @@
     for (let i = 0; i < C.VIDAS; i++) {
       const v = document.createElement('span');
       v.className = i < estado.vidas ? 'vida' : 'vida perdida';
-      v.textContent = '♥';
+      v.textContent = '🍃';
       caixa.appendChild(v);
     }
   }
@@ -201,7 +201,28 @@
     estado.podeSair = Date.now() + 3000;
   }
 
+  /** Derrota: o fundo fica poluído e folhas secas caem. Desligar devolve o ar limpo para a próxima partida. */
+  function ambienteDerrota(ligar) {
+    document.body.classList.toggle('derrotado', ligar);
+    const folhas = $('folhas');
+    folhas.innerHTML = '';
+    if (!ligar) return;
+    for (let i = 0; i < 18; i++) {
+      const f = document.createElement('span');
+      const balanco = document.createElement('i');
+      balanco.textContent = '🍂';
+      f.style.left = `${Math.random() * 96}%`;
+      f.style.fontSize = `${26 + Math.random() * 30}px`;
+      f.style.animationDuration = `${6 + Math.random() * 5}s`;
+      f.style.animationDelay = `${Math.random() * 4}s`;
+      balanco.style.animationDuration = `${1.4 + Math.random() * 1.6}s`;
+      f.appendChild(balanco);
+      folhas.appendChild(f);
+    }
+  }
+
   function derrota() {
+    ambienteDerrota(true);
     const certa = estado.pergunta.opcoes.find((o) => o.id === estado.pergunta.certa);
     $('derrota-resposta').textContent = certa ? certa.rotulo : '';
     mostrar('derrota');
