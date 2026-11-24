@@ -60,6 +60,21 @@ google-chrome --kiosk http://localhost:5174   # Chrome
 
 O primeiro toque em "Toque para jogar" libera o som, porque o navegador só toca áudio depois de uma interação.
 
+## Publicado no Vercel (sem notebook, abre em qualquer aparelho)
+
+O `vercel.json` faz no Vercel o mesmo que o `servidor.js` faz no notebook: entrega o jogo e repassa `/api` para o backend do Render. O navegador continua falando só com um endereço, então também não há CORS.
+
+Para publicar (uma vez só, com uma conta Vercel que enxergue a organização DEVassos no GitHub):
+
+1. No Vercel: **Add New → Project** e escolha o repositório `DEVassos/ecopulse-desafio`.
+   - Se ele não aparecer na lista, o Vercel ainda não tem acesso a esse repositório: use "Adjust GitHub App Permissions" (um dono da organização pode precisar aprovar).
+2. Em **Framework Preset**, deixe **Other**. Não há comando de build nem pasta de saída.
+3. **Deploy.** O jogo fica em um endereço como `https://ecopulse-desafio.vercel.app`.
+
+Cada `git push` na `main` publica de novo sozinho. Qualquer pessoa com o link consegue abrir o jogo.
+
+O Vercel não faz o ping do `servidor.js`. Se o Render gratuito estiver dormindo, a primeira leitura pode dar a tela de erro: espere uns 50 s e toque em "Tentar de novo". Com o EcoPulse aberto na tela 1, que atualiza a cada 30 s, o Render fica acordado.
+
 ## Usuário do jogo no backend
 
 No modo `api`, o jogo entra no backend com um usuário próprio, só de leitura (papel `usuario`, sem poder de administrador):
@@ -85,7 +100,7 @@ Precisa de **internet** nos dois notebooks. Eles não precisam estar na mesma re
 | Notebook | O que fazer |
 | --- | --- |
 | **Aplicação (tela 1)** | Abrir `https://ecopulse-app-smoky.vercel.app` e entrar com uma conta. |
-| **Jogo (tela 2)** | `git pull` (ou `git clone`), `node servidor.js` e abrir `http://localhost:5174` em tela cheia. No canto deve aparecer **"dados ao vivo"**. |
+| **Jogo (tela 2)** | Abrir o endereço do jogo no Vercel em tela cheia. Sem Vercel (ou se ele falhar): `git pull` (ou `git clone`), `node servidor.js` e abrir `http://localhost:5174`. No canto deve aparecer **"dados ao vivo"**. |
 
 Opcional, no Render: `POLLING_INTERVAL_MS=300000` (coleta a cada 5 min), para os números mudarem pouco no meio de uma pergunta.
 
@@ -167,6 +182,7 @@ Com o backend local no mesmo PC do jogo: `node servidor.js http://localhost:3000
 
 | Arquivo | O que faz |
 | --- | --- |
+| `vercel.json` | Publicação no Vercel: repassa `/api` para o backend do Render, como o `servidor.js` |
 | `servidor.js` | Servidor do jogo: entrega os arquivos e repassa `/api` para o backend (online por padrão), sem CORS |
 | `index.html` | As telas: espera, instrução, carregando, pergunta, vitória, derrota e erro |
 | `config.js` | Modo, endereço da API, usuário, vidas, tempos e margens |
