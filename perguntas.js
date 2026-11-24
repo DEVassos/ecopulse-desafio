@@ -1,13 +1,16 @@
 // Banco de perguntas. Cada partida sorteia 3 perguntas diferentes, e cada uma é montada com os dados
 // do momento em que ela abre ("foto do momento"). Todas as respostas estão visíveis no EcoPulse (tela 1).
 //
-// Uma pergunta = { tipo: 'bolhas' | 'opcoes', etiqueta, titulo, dica, opcoes: [{ id, rotulo, sub }], certa }
+// Uma pergunta = { tipo: 'bolhas' | 'opcoes', etiqueta, titulo, dica, opcoes: [{ id, rotulo, sub }], certa, conferir }
 //
 // Regras do sorteio, para cada partida ficar variada:
 //   - a mesma pergunta não se repete na partida;
 //   - no máximo duas perguntas da mesma família (serviços, alertas, regiões, mapa);
 //   - a resposta certa não se repete na partida.
 // Se os dados não permitirem, as regras de família e de resposta são relaxadas, nessa ordem.
+//
+// conferir(dadosNovos) devolve os ids certos com os números de agora, só entre as opções mostradas. O jogo usa
+// quando o visitante erra: se os dados mudaram no meio da pergunta e ele acertou pela tela atual, vale o acerto.
 
 (function () {
   const C = window.ECOPULSE_JOGO;
@@ -46,6 +49,18 @@
   const opcaoServico = (s) => ({ id: s.id, rotulo: s.name, sub: lugar(s) });
   const opcaoRegiao = (r) => ({ id: r.code, rotulo: r.city || r.region, sub: r.country });
 
+  /**
+   * Ids, entre `ids`, que têm o melhor valor de `campo` em `lista` (mais de um se empatarem). Serve para
+   * reconferir uma resposta com dados novos: só compara as opções que o visitante viu na tela do jogo.
+   */
+  function melhoresEntre(lista, ids, campo, maior, chave = 'id') {
+    const candidatos = lista.filter((x) => ids.includes(x[chave]) && typeof x[campo] === 'number');
+    if (candidatos.length === 0) return [];
+    const valores = candidatos.map((x) => x[campo]);
+    const alvo = maior ? Math.max(...valores) : Math.min(...valores);
+    return candidatos.filter((x) => x[campo] === alvo).map((x) => x[chave]);
+  }
+
   // ---------- fábricas ----------
   /** "Qual serviço tem mais/menos <campo>?" com bolhas do mesmo tamanho. */
   function rankingServicos(campo, maior, textos) {
@@ -55,11 +70,14 @@
       const ordem = [...lista].sort((a, b) => (maior ? b[campo] - a[campo] : a[campo] - b[campo]));
       const margem = CAMPOS_24H.includes(campo) ? C.MARGEM_24H : C.MARGEM_MINIMA;
       if (!folga(ordem[0][campo], ordem[1][campo], maior, margem)) return null;
+      const opcoes = embaralhar(ordem.slice(0, 6)).map(opcaoServico);
+      const ids = opcoes.map((o) => o.id);
       return {
         tipo: 'bolhas',
         ...textos,
-        opcoes: embaralhar(ordem.slice(0, 6)).map(opcaoServico),
+        opcoes,
         certa: ordem[0].id,
+        conferir: (novos) => melhoresEntre(novos.services, ids, campo, maior),
       };
     };
   }
@@ -76,6 +94,12 @@
     return null;
   }
 
+  /** Reconferência de uma pergunta de regiões: a melhor entre as regiões sorteadas, com os números novos. */
+  const conferirRegioes = (r, campo, maior) => {
+    const codigos = r.escolhidas.map((x) => x.code);
+    return (novos) => melhoresEntre(novos.regions, codigos, campo, maior, 'code');
+  };
+
   /** "Qual destes serviços está <status>?": um com o problema e até 3 ativos. */
   function servicoComProblema(status, titulo, dica) {
     return (d) => {
@@ -90,6 +114,7 @@
         dica,
         opcoes: embaralhar([certo, ...embaralhar(ativos).slice(0, 3)]).map(opcaoServico),
         certa: certo.id,
+        conferir: (novos) => novos.services.filter((s) => s.status === status).map((s) => s.id),
       };
     };
   }
@@ -189,6 +214,7 @@
           dica: 'Escolha a energia mais limpa: o menor fator de carbono (gCO₂e/kWh) na lista de regiões do EcoPulse.',
           opcoes: r.escolhidas.map(opcaoRegiao),
           certa: r.certa.code,
+          conferir: conferirRegioes(r, 'carbonIntensityGco2ePerKwh', false),
         };
       },
     },
@@ -205,6 +231,7 @@
           dica: 'Na lista de regiões do EcoPulse, compare o "% renovável".',
           opcoes: r.escolhidas.map(opcaoRegiao),
           certa: r.certa.code,
+          conferir: conferirRegioes(r, 'renewableSharePercent', true),
         };
       },
     },
@@ -221,6 +248,7 @@
           dica: 'Procure o maior fator (gCO₂e/kWh) na lista de regiões do EcoPulse: é onde a energia é mais suja.',
           opcoes: r.escolhidas.map(opcaoRegiao),
           certa: r.certa.code,
+          conferir: conferirRegioes(r, 'carbonIntensityGco2ePerKwh', true),
         };
       },
     },
@@ -242,6 +270,10 @@
           dica: 'Conte as bolhas de cada cidade no mapa do EcoPulse.',
           opcoes: opcoes.map(([cidade]) => ({ id: cidade, rotulo: cidade, sub: '' })),
           certa: ordem[0][0],
+          conferir: (novos) => {
+            const conta = opcoes.map(([cidade]) => ({ cidade, n: novos.services.filter((s) => s.city === cidade).length }));
+            return melhoresEntre(conta, conta.map((c) => c.cidade), 'n', true, 'cidade');
+          },
         };
       },
     },
@@ -259,6 +291,7 @@
           dica: 'Conte os serviços com status ativo no EcoPulse.',
           opcoes: valores.map((v) => ({ id: String(v), rotulo: String(v), sub: v === 1 ? 'serviço' : 'serviços' })),
           certa: String(n),
+          conferir: (novos) => [String(novos.services.filter((s) => s.status === 'ativo').length)],
         };
       },
     },

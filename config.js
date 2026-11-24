@@ -6,7 +6,7 @@
 // Também dá para trocar sem editar, pela URL: index.html?modo=api&api=http://192.168.0.10:3000/api
 
 window.ECOPULSE_JOGO = {
-  MODO: 'demo',
+  MODO: 'api',
   API_URL: 'http://localhost:3000/api', // o mesmo valor de VITE_API_URL do frontend
   EMAIL: 'userplanet@ecopulse.local', // usuário criado para a feira (o backend exige formato de e-mail)
   SENHA: 'planet123',
@@ -16,7 +16,7 @@ window.ECOPULSE_JOGO = {
   TEMPO_INSTRUCAO: 5, // segundos da tela "as respostas estão no EcoPulse"
   VOLTAR_ESPERA: 10, // segundos até voltar para a tela de espera depois do fim
   // 1º e 2º colocados precisam estar a essa distância (só no modo api, em que os dados mudam)
-  MARGEM_MINIMA: 0.15, // números da última leitura (CPU, regiões), que mudam a cada coleta
+  MARGEM_MINIMA: 0.25, // números da última leitura (CPU, regiões); a CPU oscila bastante entre coletas
   MARGEM_24H: 0.03, // totais das últimas 24 h (CO₂e, energia, potência), que quase não mudam em minutos
   VOLUME: 0.9, // 0 a 1
 };

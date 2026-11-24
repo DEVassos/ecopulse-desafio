@@ -132,22 +132,45 @@
     });
   }
 
-  function responder(id, botao) {
+  async function responder(id, botao) {
     if (estado.travado || estado.tela !== 'pergunta' || botao.disabled) return;
-    if (id === estado.pergunta.certa) {
+    const pergunta = estado.pergunta;
+    if (id === pergunta.certa) return acertou(botao);
+
+    // No modo api os números mudam a cada coleta. Antes de tirar a folha, confere com os dados de agora:
+    // se o visitante acertou pelo que a tela do EcoPulse mostra agora, vale o acerto.
+    if (C.MODO === 'api' && pergunta.conferir) {
       estado.travado = true;
-      pararRelogio();
-      botao.classList.add('certa');
-      if (estado.numero >= TOTAL) {
-        setTimeout(vitoria, 250);
-      } else {
-        window.EcoFesta.acerto();
-        setTimeout(proxima, 2300);
+      botao.classList.add('conferindo');
+      let certasAgora = [];
+      try {
+        certasAgora = pergunta.conferir(await window.EcoApi.carregarDados());
+      } catch (erro) {
+        // Sem conseguir reler, vale a resposta do momento em que a pergunta abriu
       }
+      botao.classList.remove('conferindo');
+      // A pergunta pode ter acabado enquanto conferia (tempo esgotado, Esc)
+      if (estado.pergunta !== pergunta || estado.tela !== 'pergunta' || estado.vidas <= 0) return;
+      estado.travado = false;
+      if (certasAgora.includes(id)) {
+        pergunta.certa = id;
+        return acertou(botao);
+      }
+    }
+    botao.classList.add('errada');
+    botao.disabled = true;
+    perderVida('ERROU!');
+  }
+
+  function acertou(botao) {
+    estado.travado = true;
+    pararRelogio();
+    botao.classList.add('certa');
+    if (estado.numero >= TOTAL) {
+      setTimeout(vitoria, 250);
     } else {
-      botao.classList.add('errada');
-      botao.disabled = true;
-      perderVida('ERROU!');
+      window.EcoFesta.acerto();
+      setTimeout(proxima, 2300);
     }
   }
 

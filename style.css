@@ -244,6 +244,9 @@ h1 span { display: block; font-size: 0.42em; color: var(--neon); margin-top: 0.1
   cursor: not-allowed;
 }
 @keyframes balancar { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
+/* Enquanto o jogo reconfere a resposta com os dados de agora (menos de 1 s na rede local) */
+.opcao.conferindo { border-color: var(--amarelo); animation: conferindo 0.5s ease-in-out infinite alternate !important; }
+@keyframes conferindo { to { opacity: 0.6; } }
 .opcao.revelada { border-color: var(--amarelo); box-shadow: 0 0 0 4px var(--amarelo), 0 0 40px rgba(250, 204, 21, 0.6); }
 
 /* ---------- vitória / derrota / erro ---------- */

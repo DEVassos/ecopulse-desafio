@@ -28,7 +28,9 @@ Cada partida sorteia 3 perguntas de um banco de 13, em `perguntas.js`. Na mesma 
 | Regiões | Para onde mover o serviço que mais emite (menor fator de carbono) · qual região usa mais energia renovável · qual tem o maior fator de carbono | Lista de regiões: fator (gCO₂e/kWh) e "% renovável" |
 | Mapa | Qual cidade tem mais serviços · quantos serviços estão ativos | Bolhas do mapa e status na lista |
 
-As perguntas são montadas com os dados do momento em que abrem. Uma pergunta só é sorteada quando a resposta é clara: no modo `api`, o 1º colocado precisa estar bem à frente do 2º. A margem é de 3% nos totais de 24 h e de 15% nos números da última leitura (`MARGEM_24H` e `MARGEM_MINIMA` no `config.js`). Com isso, a resposta não troca enquanto o visitante procura. Por isso, ao vivo, nem todas as 13 aparecem: se todos os serviços estão ativos, por exemplo, não há pergunta de alerta.
+As perguntas são montadas com os dados do momento em que abrem. Uma pergunta só é sorteada quando a resposta é clara: no modo `api`, o 1º colocado precisa estar bem à frente do 2º. A margem é de 3% nos totais de 24 h e de 25% nos números da última leitura (`MARGEM_24H` e `MARGEM_MINIMA` no `config.js`). Com isso, a resposta quase nunca troca enquanto o visitante procura. Por isso, ao vivo, nem todas as 13 aparecem: se todos os serviços estão ativos, por exemplo, não há pergunta de alerta.
+
+**Se os números mudarem no meio da pergunta**, o visitante não perde por isso. Quando ele toca numa opção errada, o jogo relê os dados (a opção pisca em amarelo por um instante). Se a opção tocada for a certa com os números de agora, entre as opções que a pergunta mostrou, vale o acerto.
 
 ## Como rodar
 
@@ -65,24 +67,67 @@ Esses valores ficam em `EMAIL` e `SENHA` no `config.js`. O backend do EcoPulse e
 
 Para usar outro usuário sem editar arquivo, passe pela URL: `?email=...&senha=...`.
 
-## Com os dados ao vivo (modo `api`)
+## Na feira: dois notebooks (modo `api`)
 
-1. **Ligue o modo:** troque `MODO` para `'api'` no `config.js`, ou abra `http://localhost:5174/?modo=api`.
-2. **Endereço da API:** se o backend roda no mesmo PC, o padrão `http://localhost:3000/api` já serve. Se roda em outro PC, coloque o IP dele em `API_URL` (ex.: `http://192.168.0.10:3000/api`) ou passe na URL: `?modo=api&api=http://192.168.0.10:3000/api`.
-3. **Libere o jogo no backend:** no `.env` do backend, a origem do jogo precisa estar em `CORS_ORIGIN`, separada por vírgula, mantendo a do app em primeiro lugar. Depois, reinicie o backend:
+O jogo roda no **notebook do jogo** e lê os dados pela rede no **notebook da aplicação**, onde ficam o backend e o EcoPulse (tela 1). O `config.js` já vem com `MODO: 'api'`.
+
+```
+notebook da aplicação                         notebook do jogo
+  Docker (WSL): backend :3000, EcoPulse :5173    npx serve :5174
+  portproxy :3001 → localhost:3000   ◄─rede─    http://localhost:5174/?api=http://IP-DA-APLICACAO:3001/api
+```
+
+### Rede
+
+Os dois notebooks precisam estar na mesma rede. **Wi-Fi de evento costuma bloquear um aparelho de falar com outro**: o mais seguro é um roteador ou o hotspot de um celular só para os dois. Teste antes da feira.
+
+### Notebook da aplicação
+
+1. **`.env` do backend** (na raiz do `greener-app`). Durante a feira, colete a cada 5 min, para os números mudarem pouco no meio de uma pergunta:
    ```
+   POLLING_INTERVAL_MS=300000
    CORS_ORIGIN=http://localhost:5173,http://localhost:5174
    ```
-   Com o jogo em outro PC, acrescente também a origem dele (ex.: `http://192.168.0.11:5174`).
-4. **Opcional:** durante a feira, suba `POLLING_INTERVAL_MS` para `300000` (5 min) no `.env` do backend. Assim os números mudam menos no meio de uma pergunta.
+   O `CORS_ORIGIN` já basta assim, porque o jogo é aberto como `http://localhost:5174` no notebook dele. Mantenha a origem do app em primeiro lugar.
+2. **Abra uma janela do Ubuntu e deixe aberta o tempo todo** (veja abaixo) e suba os containers:
+   ```bash
+   cd /mnt/c/dev/greener-app && docker compose up -d
+   ```
+   Confira no navegador: `http://localhost:3000/health` responde `{"status":"ok","db":"ok"}`.
+3. **Abra a porta para a rede.** O Docker dentro do WSL só responde no próprio notebook (`localhost`). No **PowerShell como administrador**, uma vez só:
+   ```powershell
+   netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=3001 connectaddress=127.0.0.1 connectport=3000
+   New-NetFirewallRule -DisplayName "EcoPulse API (jogo)" -Direction Inbound -Protocol TCP -LocalPort 3001 -Action Allow
+   ```
+   A porta 3001 repassa para a 3000 do backend. Ela fica gravada no Windows e continua valendo depois de reiniciar. Para desfazer depois da feira: `netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=3001` e `Remove-NetFirewallRule -DisplayName "EcoPulse API (jogo)"`.
+4. **Descubra o IP:** `ipconfig`, linha "Endereço IPv4" do adaptador Wi-Fi (ex.: `192.168.0.10`).
+5. Abra o EcoPulse em `http://localhost:5173` e entre com sua conta.
+
+### Notebook do jogo
+
+1. Baixe o jogo (`git clone` deste repositório, ou `git pull` se já tiver) e, na pasta dele:
+   ```bash
+   npx serve -l 5174
+   ```
+2. Teste a rede: no navegador, `http://IP-DA-APLICACAO:3001/health` precisa responder `{"status":"ok","db":"ok"}`. Se não responder, o problema é rede, portproxy ou firewall, não o jogo.
+3. Abra o jogo com o IP da aplicação:
+   ```
+   http://localhost:5174/?api=http://IP-DA-APLICACAO:3001/api
+   ```
+   Em tela cheia (F11) ou em modo quiosque: `msedge --kiosk "http://localhost:5174/?api=http://IP-DA-APLICACAO:3001/api"`. Se preferir, coloque o endereço direto em `API_URL` no `config.js`.
+4. No canto da tela de espera deve aparecer **"dados ao vivo"**. Jogue uma partida de teste.
 
 ### Backend no Docker dentro do WSL: deixe uma janela do Ubuntu aberta
 
 Se o Docker do backend roda dentro do WSL (Ubuntu), o WSL desliga sozinho quando fica sem uso, e o backend cai junto. Nos testes, isso aconteceu em poucos segundos sem nenhuma sessão aberta. **Durante a feira, deixe uma janela do Ubuntu aberta o tempo todo.** Se o backend cair mesmo assim, o jogo mostra a tela de erro, com os botões "Tentar de novo" e "Usar modo demonstração".
 
+### Tudo num PC só
+
+Com o backend no mesmo PC do jogo, basta abrir `http://localhost:5174`: o padrão `API_URL` (`http://localhost:3000/api`) já serve, sem portproxy.
+
 ## Plano B (sem rede)
 
-Rode o app do EcoPulse sem `VITE_API_URL` (modo demonstração) e o jogo com `MODO: 'demo'` (o padrão). Os dois usam os mesmos dados ilustrativos, que ficam em `dados-demo.js`. Se a equipe mudar os dados de demonstração do app, mude aqui também.
+Rode o app do EcoPulse sem `VITE_API_URL` (modo demonstração) e o jogo com `MODO: 'demo'` no `config.js` (ou abra `http://localhost:5174/?modo=demo`). Os dois usam os mesmos dados ilustrativos, que ficam em `dados-demo.js`. Se a equipe mudar os dados de demonstração do app, mude aqui também.
 
 Se o jogo não conseguir ler a API no meio da feira, a tela de erro tem o botão "Usar modo demonstração".
 
@@ -96,14 +141,14 @@ Se o jogo não conseguir ler a API no meio da feira, a tela de erro tem o botão
 
 | Campo | Padrão | O que faz |
 | --- | --- | --- |
-| `MODO` | `'demo'` | `'demo'` (dados ilustrativos) ou `'api'` (dados ao vivo) |
-| `API_URL` | `http://localhost:3000/api` | Endereço da API, o mesmo `VITE_API_URL` do frontend |
+| `MODO` | `'api'` | `'api'` (dados ao vivo) ou `'demo'` (dados ilustrativos) |
+| `API_URL` | `http://localhost:3000/api` | Endereço da API. Com o backend em outro notebook, `http://IP:3001/api` (ou `?api=` na URL) |
 | `EMAIL` / `SENHA` | `userplanet@ecopulse.local` / `planet123` | Usuário do jogo no backend |
 | `VIDAS` | `3` | Vidas para a partida inteira |
 | `TEMPO_POR_PERGUNTA` | `40` | Segundos por pergunta |
 | `TEMPO_INSTRUCAO` | `5` | Segundos da tela de instrução |
 | `VOLTAR_ESPERA` | `10` | Segundos até voltar para a tela de espera depois do fim |
-| `MARGEM_MINIMA` | `0.15` | Distância mínima entre 1º e 2º nos números da última leitura (só no modo `api`) |
+| `MARGEM_MINIMA` | `0.25` | Distância mínima entre 1º e 2º nos números da última leitura (só no modo `api`) |
 | `MARGEM_24H` | `0.03` | Distância mínima entre 1º e 2º nos totais de 24 h (só no modo `api`) |
 | `VOLUME` | `0.9` | Volume dos sons, de 0 a 1 |
 
